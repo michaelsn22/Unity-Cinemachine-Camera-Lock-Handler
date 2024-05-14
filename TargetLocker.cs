@@ -13,53 +13,67 @@ public class TargetLocker : MonoBehaviour
     private bool lockedOn = false; //lock on bool
 
     [SerializeField] private Image aimIcon;  // ui image of aim icon
-    
 
+    //vars for cycling between targets
+    private List<Transform> enemiesInRange = new List<Transform>();
+    private int currentTargetIndex = 0;
 
     private void Update()
     {
         // Check if the Virtual Camera is actively controlling the Unity camera
         bool isActive = lockOnCam.gameObject.activeInHierarchy;
 
-
         //testing lock on.
-        if (Input.GetKeyDown(KeyCode.X))
+        if (Input.GetKeyDown(KeyCode.X)) //attempt to lock onto something when key is pressed.
         {
             if (!lockedOn)
             {
                 // Get position of a potential enemy.
                 Collider[] hitEnemies = Physics.OverlapSphere(transform.position, 20f, whatIsEnemy); //(center, radius, layermask)
+                enemiesInRange.Clear(); //clear the array of transforms
 
-                if (hitEnemies.Length > 0)
+                foreach (Collider col in hitEnemies)
                 {
-                    Transform closestTransform = null;
-                    float closestDistance = Mathf.Infinity;
+                    enemiesInRange.Add(col.transform);
+                }
 
-                    foreach (Collider col in hitEnemies)
-                    {
-                        float distanceToCollider = Vector3.Distance(transform.position, col.transform.position);
-                        if (distanceToCollider < closestDistance)
-                        {
-                            closestDistance = distanceToCollider;
-                            closestTransform = col.transform;
-                        }
-                    }
-
-                    if (closestTransform != null)
-                    {
-                        ourTrans = closestTransform;
-                        lockedOn = true;
-                        //Debug.Log("locking onto target!");
-                    }
+                if (enemiesInRange.Count > 0)
+                {
+                    enemiesInRange.Sort((a, b) => 
+                        Vector3.Distance(transform.position, a.position).CompareTo(Vector3.Distance(transform.position, b.position))
+                    );
+                    currentTargetIndex = 0;
+                    ourTrans = enemiesInRange[currentTargetIndex];
+                    lockedOn = true;
                 }
             }
-            else if(lockedOn)
+            else
             {
-                lockedOn = false;
+                //clear memory, check again if targets are in range. THEN proceed to swap targets if there isnt more than one enemy around. So the player can make their choice to un-lock the camera if they want.
+                Collider[] hitEnemies = Physics.OverlapSphere(transform.position, 20f, whatIsEnemy); //(center, radius, layermask)
+                enemiesInRange.Clear();
+                
+                foreach (Collider col in hitEnemies)
+                {
+                    enemiesInRange.Add(col.transform);
+                }
+
+                // Cycle to the next target.
+                if (enemiesInRange.Count > 1)
+                {
+                    currentTargetIndex = (currentTargetIndex + 1) % enemiesInRange.Count;
+                    ourTrans = enemiesInRange[currentTargetIndex];
+                }
+                else
+                {
+                    // If no other enemies are around besides that one enemy, unlock.
+                    lockedOn = false;
+                    enemiesInRange.Clear();
+                }
             }
         }
 
-        if (lockedOn)
+        if (lockedOn) //change where the camera is looking and where the aim icon is every frame.
         {
             //enable the lock on cam, disable the old one.
             if (!isActive)
@@ -74,14 +88,28 @@ public class TargetLocker : MonoBehaviour
 
             if (ourTrans != null && ourTrans.GetComponent<Enemy>().ReturnValue())
             {
+                Transform childTransform = ourTrans.Find("LockOnPoint");
                 //if the enemy is still alive:
-                lockOnCam.LookAt = ourTrans;
-
-                //icon test
-                if(aimIcon)
+                if (childTransform != null)
                 {
-                    //Debug.Log("icon should be moving to obj");
-                    aimIcon.transform.position = mainCamera.WorldToScreenPoint(ourTrans.position);
+                    //Debug.Log("found child transform!");
+                    lockOnCam.LookAt = childTransform;
+                    
+                    if(aimIcon)
+                    {
+                        //Debug.Log("icon should be moving to obj");
+                        aimIcon.transform.position = mainCamera.WorldToScreenPoint(childTransform.position);
+                    }
+                }
+                else{
+                    //Debug.Log("didnt find child transform!");
+                    lockOnCam.LookAt = ourTrans;
+
+                    if(aimIcon)
+                    {
+                        //Debug.Log("icon should be moving to obj");
+                        aimIcon.transform.position = mainCamera.WorldToScreenPoint(ourTrans.position);
+                    }
                 }
             }
             else{
